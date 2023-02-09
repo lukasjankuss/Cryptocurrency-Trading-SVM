@@ -9,7 +9,7 @@ from datetime import datetime
 df = pd.read_csv('data/BTC-USD.csv')
 
 # Convert the date column to Unix timestamps
-df['Date'] = df['Date'].apply(lambda x: int(datetime.strptime(x, '%Y-%m-%d').timestamp()))
+df['Date'] = df['Date'].apply(lambda x: int(datetime.strptime(x, '%d/%m/%Y').timestamp()))
 
 # Prepare the data for modeling
 X = df['Date'].values.reshape(-1, 1)
