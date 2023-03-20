@@ -65,7 +65,29 @@ for i, label in enumerate(['Open', 'High', 'Low', 'Close']):
     axs[i].set(title=f'Actual vs Predicted {label} Prices', xlabel='Sample', ylabel='Price')
     axs[i].legend()
 
+# Prepare future dates and corresponding volume data
+future_dates = pd.date_range(start='2023-03-21', end='2023-04-20', freq='D')  # 30 days
+future_volumes = np.random.choice(df['Volume'], len(future_dates))  # Randomly selecting historical volumes as a proxy
+
+# Convert future dates to Unix timestamps and create a feature matrix
+future_dates_unix = [int(x.timestamp()) for x in future_dates]
+X_future = np.column_stack((future_dates_unix, future_volumes))
+
+# Scale the feature matrix using the same scaler object
+X_future_scaled = scaler.transform(X_future)
+
+# Use the ensemble model to make predictions on the scaled feature matrix
+y_future_pred_svr = svr_regressor.predict(X_future_scaled)
+y_future_pred_rf = rf_regressor.predict(X_future_scaled)
+y_future_pred_ensemble = (y_future_pred_svr + y_future_pred_rf) / 2
+
+# Print the predicted Open, High, Low, and Close prices for the future dates
+future_prices_df = pd.DataFrame(y_future_pred_ensemble, columns=['Open', 'High', 'Low', 'Close'])
+future_prices_df.index = future_dates
+print(future_prices_df)
+
 # Add a title to the figure
 fig.suptitle('Bitcoin Price Predictions', fontsize=16)
 
 plt.show()
+
