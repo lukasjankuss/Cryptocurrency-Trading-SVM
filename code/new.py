@@ -1,3 +1,4 @@
+# Load the necessary libraries
 import numpy as np
 import pandas as pd
 from sklearn.svm import SVR
@@ -16,8 +17,17 @@ df.dropna(inplace=True)
 # Convert the date column to Unix timestamps
 df['Date'] = df['Date'].apply(lambda x: int(datetime.strptime(x, '%d/%m/%Y').timestamp()))
 
+# Feature Engineering
+df['Price Change'] = df['Close'].pct_change()
+df['Volume Change'] = df['Volume'].pct_change()
+
+# Add a rolling average
+df['Rolling_Avg'] = df['Close'].rolling(window=5).mean()
+
+df = df.dropna()
+
 # Prepare the data for modeling
-X = df[['Date', 'Volume']].values
+X = df[['Date', 'Volume', 'Price Change', 'Volume Change', 'Rolling_Avg']].values
 y = df[['Open', 'High', 'Low', 'Close']].values
 
 # Split the data into training and testing sets
@@ -67,11 +77,24 @@ for i, label in enumerate(['Open', 'High', 'Low', 'Close']):
 
 # Prepare future dates and corresponding volume data
 future_dates = pd.date_range(start='2023-03-21', end='2023-04-20', freq='D')  # 30 days
+np.random.seed(42)
+
 future_volumes = np.random.choice(df['Volume'], len(future_dates))  # Randomly selecting historical volumes as a proxy
+
+# Feature Engineering for future data
+future_price_change = np.append([0], np.diff(future_volumes) / future_volumes[:-1])  
+future_vol_change = np.append([0], np.diff(future_volumes) / future_volumes[:-1])
+
+# Pad the price change and volume change arrays with an initial value to match lengths
+future_price_change = np.pad(future_price_change, (1, 0), mode='edge')[1:]
+future_vol_change = np.pad(future_vol_change, (1, 0), mode='edge')[1:]
+
+# Placeholder for future rolling averages
+future_rolling_avgs = np.full(len(future_dates), df['Rolling_Avg'].iloc[-1])
 
 # Convert future dates to Unix timestamps and create a feature matrix
 future_dates_unix = [int(x.timestamp()) for x in future_dates]
-X_future = np.column_stack((future_dates_unix, future_volumes))
+X_future = np.column_stack((future_dates_unix, future_volumes, future_price_change, future_vol_change, future_rolling_avgs))
 
 # Scale the feature matrix using the same scaler object
 X_future_scaled = scaler.transform(X_future)
@@ -90,4 +113,3 @@ print(future_prices_df)
 fig.suptitle('Bitcoin Price Predictions', fontsize=16)
 
 plt.show()
-
