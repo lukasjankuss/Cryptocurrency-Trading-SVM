@@ -1,4 +1,4 @@
-# Load the necessary libraries
+# Import libraries and modules
 import numpy as np
 import pandas as pd
 from sklearn.svm import SVR
@@ -38,17 +38,54 @@ scaler = MinMaxScaler()
 X_train = scaler.fit_transform(X_train)
 X_test = scaler.transform(X_test)
 
-# Create the SVR model with the best parameters found from the previous GridSearchCV
-best_svr = SVR(kernel='rbf', C=100, epsilon=0.01)
+# Initialize the models
+svr = SVR()
+rf = RandomForestRegressor(random_state=0)
 
-# Create the Random Forest Regressor model
-rf = RandomForestRegressor(n_estimators=100, random_state=0)
+# Create the MultiOutputRegressor wrappers
+svr_regressor = MultiOutputRegressor(svr)
+rf_regressor = MultiOutputRegressor(rf)
 
-# Create the MultiOutputRegressor with the SVR model
+# Define the parameter grid for SVR
+svr_param_grid = {
+    'estimator__C': [0.1, 1, 10, 100],
+    'estimator__epsilon': [0.01, 0.1, 1],
+    'estimator__kernel': ['linear', 'rbf']
+}
+
+# Define the parameter grid for Random Forest
+rf_param_grid = {
+    'estimator__n_estimators': [10, 50, 100, 200],
+    'estimator__max_depth': [None, 10, 50, 100],
+    'estimator__min_samples_split': [2, 5, 10]
+}
+
+# Create GridSearchCV objects for SVR and Random Forest
+svr_grid_search = GridSearchCV(svr_regressor, svr_param_grid, cv=5, n_jobs=-1, verbose=2)
+rf_grid_search = GridSearchCV(rf_regressor, rf_param_grid, cv=5, n_jobs=-1, verbose=2)
+
+# Fit the grid search objects
+svr_grid_search.fit(X_train, y_train)
+rf_grid_search.fit(X_train, y_train)
+
+# Get the best parameters
+best_svr_params = svr_grid_search.best_params_
+best_rf_params = rf_grid_search.best_params_
+
+print("Best SVR parameters: ", best_svr_params)
+print("Best Random Forest parameters: ", best_rf_params)
+
+# Create the SVR model with the best parameters
+best_svr = SVR(kernel=best_svr_params['estimator__kernel'], C=best_svr_params['estimator__C'], epsilon=best_svr_params['estimator__epsilon'])
+
+# Create the Random Forest Regressor model with the best parameters
+best_rf = RandomForestRegressor(n_estimators=best_rf_params['estimator__n_estimators'], max_depth=best_rf_params['estimator__max_depth'], min_samples_split=best_rf_params['estimator__min_samples_split'], random_state=0)
+
+# Create the MultiOutputRegressor with the best SVR model
 svr_regressor = MultiOutputRegressor(best_svr)
 
-# Create the MultiOutputRegressor with the Random Forest Regressor model
-rf_regressor = MultiOutputRegressor(rf)
+# Create the MultiOutputRegressor with the best Random Forest Regressor model
+rf_regressor = MultiOutputRegressor(best_rf)
 
 # Fit both models to the training data
 svr_regressor.fit(X_train, y_train)
@@ -75,41 +112,24 @@ for i, label in enumerate(['Open', 'High', 'Low', 'Close']):
     axs[i].set(title=f'Actual vs Predicted {label} Prices', xlabel='Sample', ylabel='Price')
     axs[i].legend()
 
-# Prepare future dates and corresponding volume data
+plt.show()
+
+# Prepare future dates
 future_dates = pd.date_range(start='2023-03-21', end='2023-04-20', freq='D')  # 30 days
-np.random.seed(42)
 
-future_volumes = np.random.choice(df['Volume'], len(future_dates))  # Randomly selecting historical volumes as a proxy
+# Assume that the 'Volume', 'Price Change', 'Volume Change', 'Rolling_Avg' remain the same as the last date in your original data
+future_X = np.tile(X[-1], (len(future_dates), 1))
+future_X[:, 0] = [int(x.timestamp()) for x in future_dates]  # Replace 'Date' with future dates in Unix timestamps
 
-# Feature Engineering for future data
-future_price_change = np.append([0], np.diff(future_volumes) / future_volumes[:-1])  
-future_vol_change = np.append([0], np.diff(future_volumes) / future_volumes[:-1])
-
-# Pad the price change and volume change arrays with an initial value to match lengths
-future_price_change = np.pad(future_price_change, (1, 0), mode='edge')[1:]
-future_vol_change = np.pad(future_vol_change, (1, 0), mode='edge')[1:]
-
-# Placeholder for future rolling averages
-future_rolling_avgs = np.full(len(future_dates), df['Rolling_Avg'].iloc[-1])
-
-# Convert future dates to Unix timestamps and create a feature matrix
-future_dates_unix = [int(x.timestamp()) for x in future_dates]
-X_future = np.column_stack((future_dates_unix, future_volumes, future_price_change, future_vol_change, future_rolling_avgs))
-
-# Scale the feature matrix using the same scaler object
-X_future_scaled = scaler.transform(X_future)
+# Scale the future_X using the same scaler object
+future_X_scaled = scaler.transform(future_X)
 
 # Use the ensemble model to make predictions on the scaled feature matrix
-y_future_pred_svr = svr_regressor.predict(X_future_scaled)
-y_future_pred_rf = rf_regressor.predict(X_future_scaled)
+y_future_pred_svr = svr_regressor.predict(future_X_scaled)
+y_future_pred_rf = rf_regressor.predict(future_X_scaled)
 y_future_pred_ensemble = (y_future_pred_svr + y_future_pred_rf) / 2
 
 # Print the predicted Open, High, Low, and Close prices for the future dates
 future_prices_df = pd.DataFrame(y_future_pred_ensemble, columns=['Open', 'High', 'Low', 'Close'])
 future_prices_df.index = future_dates
 print(future_prices_df)
-
-# Add a title to the figure
-fig.suptitle('Bitcoin Price Predictions', fontsize=16)
-
-plt.show()
