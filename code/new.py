@@ -9,6 +9,8 @@ from sklearn.preprocessing import MinMaxScaler
 from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_squared_error
 
 # Load the dataset
 df = pd.read_csv('data/BTC-USDv2.csv')
@@ -50,7 +52,7 @@ rf_regressor = MultiOutputRegressor(rf)
 svr_param_grid = {
     'estimator__C': [0.1, 1, 10, 100],
     'estimator__epsilon': [0.01, 0.1, 1],
-    'estimator__kernel': ['linear', 'rbf']
+    'estimator__kernel': ['linear', 'rbf', 'poly', 'sigmoid']
 }
 
 # Define the parameter grid for Random Forest
@@ -87,6 +89,26 @@ svr_regressor = MultiOutputRegressor(best_svr)
 # Create the MultiOutputRegressor with the best Random Forest Regressor model
 rf_regressor = MultiOutputRegressor(best_rf)
 
+# Get the complete cross-validation results for SVR
+cv_results_svr = svr_grid_search.cv_results_
+cv_results_svr_df = pd.DataFrame(cv_results_svr)
+cv_results_svr_df_sorted = cv_results_svr_df.sort_values(by='mean_test_score', ascending=False)
+
+print("Complete SVR cross-validation results: ")
+print(cv_results_svr_df_sorted)
+
+# Following is the code to compare different kernels
+kernels = ['linear', 'rbf', 'poly', 'sigmoid']
+average_scores = []
+
+for kernel in kernels:
+    kernel_results = cv_results_svr_df[cv_results_svr_df['param_estimator__kernel'] == kernel]
+    average_score = kernel_results['mean_test_score'].mean()
+    average_scores.append([kernel, average_score])
+
+average_scores_df = pd.DataFrame(average_scores, columns=['Kernel', 'Average Mean Test Score'])
+print(average_scores_df)
+
 # Fit both models to the training data
 svr_regressor.fit(X_train, y_train)
 rf_regressor.fit(X_train, y_train)
@@ -98,10 +120,54 @@ y_pred_rf = rf_regressor.predict(X_test)
 # Combine the predictions using a simple average
 y_pred_ensemble = (y_pred_svr + y_pred_rf) / 2
 
-# Evaluate the performance of the ensemble model
-from sklearn.metrics import mean_squared_error
-mse = mean_squared_error(y_test, y_pred_ensemble)
-print('Mean Squared Error:', mse)
+# Evaluate the performance of the ensemble model and individual models
+mse_ensemble = mean_squared_error(y_test, y_pred_ensemble)
+mae_ensemble = mean_absolute_error(y_test, y_pred_ensemble)
+print('Ensemble Mean Squared Error:', mse_ensemble)
+print('Ensemble Mean Absolute Error:', mae_ensemble)
+
+mse_svr = mean_squared_error(y_test, y_pred_svr)
+mae_svr = mean_absolute_error(y_test, y_pred_svr)
+print('SVR Mean Squared Error:', mse_svr)
+print('SVR Mean Absolute Error:', mae_svr)
+
+mse_rf = mean_squared_error(y_test, y_pred_rf)
+mae_rf = mean_absolute_error(y_test, y_pred_rf)
+print('Random Forest Mean Squared Error:', mse_rf)
+print('Random Forest Mean Absolute Error:', mae_rf)
+
+# Perform price trend prediction analysis
+price_trends_pred = np.sign(y_pred_svr[:, 3] - y_pred_svr[:, 0])  # Predicted price trends (1: increase, -1: decrease)
+price_trends_actual = np.sign(y_test[:, 3] - y_test[:, 0])  # Actual price trends from the test set
+
+# Calculate additional evaluation metrics for price trend prediction
+accuracy = np.mean(price_trends_pred == price_trends_actual)
+precision = np.mean(price_trends_pred[price_trends_actual == 1] == 1)
+recall = np.mean(price_trends_pred[price_trends_pred == 1] == 1)
+f1_score = 2 * (precision * recall) / (precision + recall)
+
+print('Price Trend Prediction Accuracy:', accuracy)
+print('Price Trend Prediction Precision:', precision)
+print('Price Trend Prediction Recall:', recall)
+print('Price Trend Prediction F1-score:', f1_score)
+
+# Implement and evaluate a simple trading strategy based on the predicted price trends
+df_test = pd.DataFrame(y_test, columns=['Open', 'High', 'Low', 'Close'])
+df_test['Predicted_Trend'] = price_trends_pred
+df_test['Actual_Trend'] = price_trends_actual
+
+# Define trading rules
+df_test['Signal'] = np.where(df_test['Predicted_Trend'] == 1, 1, -1)
+df_test['Returns'] = df_test['Signal'] * df_test['Close'].pct_change()
+df_test['Cumulative_Returns'] = (1 + df_test['Returns']).cumprod()
+df_test['Benchmark_Returns'] = df_test['Close'].pct_change().cumsum() + 1
+
+# Evaluate trading strategy performance
+strategy_returns = df_test['Cumulative_Returns'].iloc[-1]
+benchmark_returns = df_test['Benchmark_Returns'].iloc[-1]
+
+print('Trading Strategy Returns:', strategy_returns)
+print('Benchmark Returns:', benchmark_returns)
 
 # Plot the actual vs predicted values
 fig, axs = plt.subplots(2, 2, figsize=(15, 10))
@@ -128,6 +194,7 @@ future_X_scaled = scaler.transform(future_X)
 y_future_pred_svr = svr_regressor.predict(future_X_scaled)
 y_future_pred_rf = rf_regressor.predict(future_X_scaled)
 y_future_pred_ensemble = (y_future_pred_svr + y_future_pred_rf) / 2
+
 
 # Print the predicted Open, High, Low, and Close prices for the future dates
 future_prices_df = pd.DataFrame(y_future_pred_ensemble, columns=['Open', 'High', 'Low', 'Close'])
