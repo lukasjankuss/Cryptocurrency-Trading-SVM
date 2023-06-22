@@ -12,7 +12,7 @@ from sklearn.metrics import mean_absolute_error  # Import mean_absolute_error fo
 from sklearn.metrics import mean_squared_error  # Import mean_squared_error for model evaluation
 
 # Load the dataset
-df = pd.read_csv('data/ETH-USD.csv')  # Load the CSV data
+df = pd.read_csv('data/Bitcoin/BTC-USD.csv')  # Load the CSV data
 df.dropna(inplace=True)  # Remove any NA or missing values from the dataframe
 
 # Convert the 'Date' column to UNIX timestamp
@@ -50,7 +50,9 @@ svr_regressor = MultiOutputRegressor(svr)  # Wrap the SVR model to handle multip
 svr_param_grid = {
     'estimator__C': [0.1, 1, 10, 100],  # Regularization parameter
     'estimator__epsilon': [0.01, 0.1, 1],  # Epsilon in the epsilon-SVR model
-    'estimator__kernel': ['linear', 'rbf', 'poly', 'sigmoid']  # Specifies the kernel type to be used in the algorithm
+    'estimator__kernel': ['linear', 'rbf', 'poly', 'sigmoid'],  # Specifies the kernel type to be used in the algorithm
+    #'estimator__gamma': [0.1, 1, 10, 'scale', 'auto'],  # Kernel coefficient
+    #'estimator__degree': [2, 3, 4, 5]  # Degree for 'poly' kernel
 }
 
 # Perform grid search with cross-validation to find the best hyperparameters
