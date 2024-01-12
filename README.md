@@ -40,26 +40,26 @@ The project is organized as follows:
 
 FinalProject21201706/
 ├── data/
-│   ├── Bitcoin/
-│   │   ├── Bitcoin.txt
-│   │   └── BTC-USD.csv
-│   ├── Cardano/
-│   │   ├── Cardano.txt
-│   │   └── ADA-USD.csv
-│   ├── Dogecoin/
-│   │   ├── Dogecoin.txt
-│   │   └── DOGE-USD.csv
-│   ├── Ethereum/
-│   │   ├── Ethereum.txt
-│   │   └── ETH-USD.csv
-│   ├── Litecoin/
-│   │   ├── Litecoin.txt
-│   │   └── LTC-USD.csv
-│   ├── Ripple/
-│   │   ├── Ripple.txt
-│   │   └── XRP-USD.csv
-│   └── Tether/
-│       ├── Tether.txt
-│       └── USDT-USD.csv
+│ ├── Bitcoin/
+│ │ ├── Bitcoin.txt
+│ │ └── BTC-USD.csv
+│ ├── Cardano/
+│ │ ├── Cardano.txt
+│ │ └── ADA-USD.csv
+│ ├── Dogecoin/
+│ │ ├── Dogecoin.txt
+│ │ └── DOGE-USD.csv
+│ ├── Ethereum/
+│ │ ├── Ethereum.txt
+│ │ └── ETH-USD.csv
+│ ├── Litecoin/
+│ │ ├── Litecoin.txt
+│ │ └── LTC-USD.csv
+│ ├── Ripple/
+│ │ ├── Ripple.txt
+│ │ └── XRP-USD.csv
+│ └── Tether/
+│ ├── Tether.txt
+│ └── USDT-USD.csv
 ├── KernelPerformance.py
 └── README.md
