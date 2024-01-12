@@ -10,9 +10,12 @@ import matplotlib.pyplot as plt  # Import matplotlib for data visualization
 import seaborn as sns  # Import seaborn for data visualization
 from sklearn.metrics import mean_absolute_error  # Import mean_absolute_error for model evaluation
 from sklearn.metrics import mean_squared_error  # Import mean_squared_error for model evaluation
+import time  # Import the time module
+from sklearn.utils import shuffle # Import the shuffle module
+from sklearn.model_selection import learning_curve  # Import learning_curve from scikit-learn
 
 # Load the dataset
-df = pd.read_csv('data/Bitcoin/BTC-USD.csv')  # Load the CSV data
+df = pd.read_csv('data/Ethereum/ETH-USD.csv')  # Load the CSV data
 df.dropna(inplace=True)  # Remove any NA or missing values from the dataframe
 
 # Convert the 'Date' column to UNIX timestamp
@@ -51,17 +54,20 @@ svr_param_grid = {
     'estimator__C': [0.1, 1, 10, 100],  # Regularization parameter
     'estimator__epsilon': [0.01, 0.1, 1],  # Epsilon in the epsilon-SVR model
     'estimator__kernel': ['linear', 'rbf', 'poly', 'sigmoid'],  # Specifies the kernel type to be used in the algorithm
-    #'estimator__gamma': [0.1, 1, 10, 'scale', 'auto'],  # Kernel coefficient
-    #'estimator__degree': [2, 3, 4, 5]  # Degree for 'poly' kernel
 }
 
 # Perform grid search with cross-validation to find the best hyperparameters
 svr_grid_search = GridSearchCV(svr_regressor, svr_param_grid, cv=5, n_jobs=-1, verbose=2)  # Initialize the GridSearchCV
+start_time = time.time()  # Note the start time
 svr_grid_search.fit(X_train, y_train)  # Fit the model to the training data
+end_time = time.time()  # Note the end time
+
+print("Time taken for grid search: {} seconds".format(end_time - start_time))  # Print the time difference
 
 # Print the best hyperparameters found in the grid search
 best_svr_params = svr_grid_search.best_params_  # Get the best parameters
 print("Best SVR parameters: ", best_svr_params)  # Print the best parameters
+print("Best score found: ", svr_grid_search.best_score_) # Print the best score
 
 # Initialize an SVR model with the best hyperparameters
 best_svr = SVR(kernel=best_svr_params['estimator__kernel'], C=best_svr_params['estimator__C'], epsilon=best_svr_params['estimator__epsilon'])  # Initialize the best SVR model
@@ -82,6 +88,7 @@ print(cv_results_svr_df_sorted)  # Print the sorted dataframe
 kernels = ['linear', 'rbf', 'poly', 'sigmoid']  # List of kernel types
 average_scores = []  # Empty list to store average scores for each kernel type
 
+
 # Loop through each kernel type
 for kernel in kernels:
     kernel_results = cv_results_svr_df[cv_results_svr_df['param_estimator__kernel'] == kernel]  # Filter results for each kernel
@@ -99,6 +106,40 @@ y_pred_svr = svr_regressor.predict(X_test)  # Predict the target variables for t
 
 # Initialize a list to store accuracy results for the SVR model
 svr_accuracies = []  # Initialize an empty list
+
+# Number of runs for stability test
+num_runs = 10
+
+# Store scores of each run
+run_scores = []
+
+# Running the model 'num_runs' times
+for run in range(num_runs):
+    # Shuffle the data
+    X, y = shuffle(X, y, random_state=run)
+
+    # Split the data into training and testing datasets
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=run)  # Split the data
+
+    # Normalize the features to a range of [0, 1]
+    scaler = MinMaxScaler()  # Initialize the MinMaxScaler
+    X_train = scaler.fit_transform(X_train)  # Fit the scaler to the training data and transform it
+    X_test = scaler.transform(X_test)  # Transform the testing data with the scaler
+
+    # Fit the SVR regressor to the training data
+    svr_regressor.fit(X_train, y_train)  # Fit the SVR regressor to the training data
+
+    # Predict the target variables for the test data
+    y_pred_svr = svr_regressor.predict(X_test)  # Predict the target variables for the test data
+
+    # Calculate accuracy for the SVR model and append to the list
+    svr_accuracy = mean_absolute_error(y_test, y_pred_svr)  
+    run_scores.append(svr_accuracy)  # Append the accuracy to the list
+
+# Calculate and print the variance and standard deviation of the performance scores across different runs
+print("Variance of performance scores across runs:", np.var(run_scores))
+print("Standard deviation of performance scores across runs:", np.std(run_scores))
+
 
 # Loop over different training periods
 for period in range(100, len(X_train), 100):  # Start with a training set of size 100 and increase by 100 in each iteration
@@ -152,33 +193,45 @@ df_test = pd.DataFrame(y_test, columns=['Open', 'High', 'Low', 'Close'])  # Crea
 df_test['Predicted_Trend'] = price_trends_pred  # Add the predicted price trends to the DataFrame
 df_test['Actual_Trend'] = price_trends_actual  # Add the actual price trends to the DataFrame
 
-df_test['Signal'] = np.where(df_test['Predicted_Trend'] == 1, 1, -1)  # Generate trading signals based on the predicted price trends
-df_test['Returns'] = df_test['Signal'] * df_test['Close'].pct_change()  # Calculate the returns based on the trading signals
-df_test['Cumulative_Returns'] = (1 + df_test['Returns']).cumprod()  # Calculate the cumulative returns
+df_test['Signal'] = np.where(df_test['Predicted_Trend'] == 1, 1, 0)  # Buy when the predicted trend is up and hold when it is down
+df_test['Returns'] = df_test['Signal'].shift() * df_test['Close'].pct_change()  # Calculate the returns based on the trading signals
+df_test.dropna(inplace=True)  # Drop the NaN values
+
+#T esting the ability of Cumulative Returns and Benchmark Returns
+df_test['Cumulative_Returns'] = (1 + df_test['Returns']).cumprod() - 1  # Calculate the cumulative returns
 df_test['Benchmark_Returns'] = df_test['Close'].pct_change().cumsum() + 1  # Calculate benchmark returns
 
-# Evaluate trading strategy performance
-strategy_returns = df_test['Cumulative_Returns'].iloc[-1]  # Get the final cumulative returns of the trading strategy
-benchmark_returns = df_test['Benchmark_Returns'].iloc[-1]  # Get the final benchmark returns
+print('Trading Strategy Returns:', df_test['Cumulative_Returns'].iloc[-1])  # Print the returns of the trading strategy
+print('Benchmark Returns:', df_test['Benchmark_Returns'].iloc[-1])  # Print the benchmark returns
 
-print('Trading Strategy Returns:', strategy_returns)  # Print the returns of the trading strategy
-print('Benchmark Returns:', benchmark_returns)  # Print the benchmark returns
+# Calculate and print the standard deviation of mean test score for each kernel 
+kernel_stds = []  # Empty list to store standard deviations for each kernel type
 
-# Plot the actual vs predicted values
-fig, axs = plt.subplots(2, 2, figsize=(15, 10))  # Create subplots for each price variable
-axs = axs.ravel()  # Flatten the subplots array
+# Loop through each kernel type
+for kernel in kernels:
+    kernel_results = cv_results_svr_df[cv_results_svr_df['param_estimator__kernel'] == kernel]  # Filter results for each kernel
+    kernel_std = kernel_results['mean_test_score'].std()  # Calculate standard deviation of mean test score for each kernel
+    kernel_stds.append([kernel, kernel_std])  # Append the kernel type and standard deviation to the list
 
-for i, label in enumerate(['Open', 'High', 'Low', 'Close']):  # loop over the indices and labels in the list
-    # Create a line plot using seaborn's lineplot method
-    # Data for the plot is taken from a pandas DataFrame
-    # The DataFrame has two columns: 'Actual' and 'Predicted' 
-    # These are populated from the 'y_test' and 'y_pred_svr' arrays respectively (these appear to be numpy arrays)
-    # For each column, we select the ith column of the corresponding array
-    sns.lineplot(data=pd.DataFrame({'Actual': y_test[:, i], 'Predicted': y_pred_svr[:, i]}), ax=axs[i])  
-    axs[i].set(title=f'Actual vs Predicted {label} Prices', xlabel='Sample', ylabel='Price')  # Set the title, xlabel, and ylabel for each subplot
-    axs[i].legend()  # Show the legend on the plot
+kernel_stds_df = pd.DataFrame(kernel_stds, columns=['Kernel', 'Std of Mean Test Score'])  # Convert list to a dataframe
+print(kernel_stds_df)  # Print the dataframe
 
-plt.show()  # Display the plots
+# Plot standard deviation of mean test score for each kernel 
+plt.figure(figsize=(10, 5))  # Initialize a new figure
+plt.bar(kernel_stds_df['Kernel'], kernel_stds_df['Std of Mean Test Score'])  # Bar plot of standard deviation of mean test score for each kernel 
+plt.xlabel('Kernel')  # Set the x-axis label
+plt.ylabel('Standard Deviation of Mean Test Score')  # Set the y-axis label
+plt.title('Kernel Stability')  # Set the title
+plt.show()  # Show the plot
+
+# Plot the actual vs predicted close values
+plt.figure(figsize=(10, 5))
+sns.lineplot(data=pd.DataFrame({'Actual': y_test[:, 3], 'Predicted': y_pred_svr[:, 3]}))
+plt.title('Actual vs Predicted Close Prices')
+plt.xlabel('Sample')
+plt.ylabel('Price')
+plt.legend()
+plt.show()
 
 # Prepare future dates
 future_dates = pd.date_range(start='2023-03-21', end='2023-04-20', freq='D')  # Generate future dates (30 days)
@@ -193,7 +246,41 @@ future_X_scaled = scaler.transform(future_X)  # Scale the future_X using the sam
 # Use the ensemble model to make predictions on the scaled feature matrix
 y_future_pred_svr = svr_regressor.predict(future_X_scaled)  # Make predictions for future prices using the SVR model
 
-# Print the predicted Open, High, Low, and Close prices for the future dates
-future_prices_df = pd.DataFrame(y_future_pred_svr, columns=['Open', 'High', 'Low', 'Close'])
-future_prices_df.index = future_dates
-print(future_prices_df)
+# Create a DataFrame with future predicted prices and display it
+future_prices_df = pd.DataFrame(y_future_pred_svr, columns=['Open', 'High', 'Low', 'Close'])  # Create DataFrame with predicted prices
+future_prices_df.index = future_dates  # Set the index to future dates
+print(future_prices_df)  # Print the DataFrame
+
+# Define dictionaries to hold different metrics for each kernel
+train_sizes, train_scores, test_scores = {}, {}, {}  # Initialize dictionaries to store sizes and scores
+
+# Loop over different kernels to train and evaluate the model
+for kernel in kernels:  
+    # Initialize SVR with the optimal parameters
+    best_svr = SVR(kernel=kernel, C=best_svr_params['estimator__C'], epsilon=best_svr_params['estimator__epsilon'])  # Initialize SVR model with best params
+    svr_regressor = MultiOutputRegressor(best_svr)  # Use MultiOutputRegressor for handling multiple outputs
+
+    # Calculate learning curve with 5-fold cross-validation
+    sizes, train_score, test_score = learning_curve(svr_regressor, X_train, y_train, cv=5, scoring='neg_mean_squared_error')  # Calculate learning curve
+    
+    # Store the calculated metrics for each kernel
+    train_sizes[kernel] = sizes  # Store sizes for each kernel
+    train_scores[kernel] = train_score  # Store training scores for each kernel
+    test_scores[kernel] = test_score  # Store test scores for each kernel
+
+# Plot the learning curves
+plt.figure(figsize=(10, 5))  # Set the size of the figure
+
+# Loop over different kernels to plot the learning curves
+for kernel in kernels:  
+    # Plot training and validation errors for each kernel
+    plt.plot(train_sizes[kernel], -np.mean(train_scores[kernel], axis=1), label=f"Training error - {kernel}")  # Plot training error
+    plt.plot(train_sizes[kernel], -np.mean(test_scores[kernel], axis=1), label=f"Validation error - {kernel}")  # Plot validation error
+
+# Add labels, title, legend, and grid to the plot
+plt.xlabel("Training set size", fontsize=14)  # Add x-axis label
+plt.ylabel("MSE", fontsize=14)  # Add y-axis label
+plt.title("Learning curves", fontsize=16)  # Add title
+plt.legend()  # Add legend
+plt.grid()  # Add grid
+plt.show()  # Display the plot
